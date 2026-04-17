@@ -1,6 +1,6 @@
 fastapi
 uvicorn[standard]
-langchain-ollama
+langchain-openai
 langchain-chroma
 langchain
 openai

@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-from langchain_ollama import OllamaEmbeddings
+from langchain_openai import OpenAIEmbeddings
 from langchain_chroma import Chroma
 import uvicorn
 import os
@@ -9,17 +9,21 @@ from openai import OpenAI
 
 app = FastAPI(title="Pegasus CS Assistant")
 
-# Add CORS middleware - This is the fix
+# Enable CORS so your WordPress site can call it
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],           # For now allow all (we can restrict later)
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# Load semantic index
-embeddings = OllamaEmbeddings(model="mxbai-embed-large")
+# Use OpenAI embeddings (works reliably on Render)
+embeddings = OpenAIEmbeddings(
+    model="text-embedding-3-small",
+    openai_api_key=os.environ.get("OPENAI_API_KEY")
+)
+
 vectorstore = Chroma(
     persist_directory="./wp_semantic_index",
     embedding_function=embeddings
@@ -27,7 +31,7 @@ vectorstore = Chroma(
 
 retriever = vectorstore.as_retriever(search_kwargs={"k": 6})
 
-# Grok API Client
+# Grok Client
 client = OpenAI(
     base_url="https://api.x.ai/v1",
     api_key=os.environ.get("GROK_API_KEY")
@@ -38,13 +42,15 @@ class ChatRequest(BaseModel):
 
 @app.post("/chat")
 async def chat(request: ChatRequest):
+    # Retrieve relevant content from your semantic index
     docs = retriever.invoke(request.message)
     context = "\n\n---\n\n".join([doc.page_content for doc in docs])
     sources = [doc.metadata.get("source_url") for doc in docs if doc.metadata.get("source_url")]
 
-    system_prompt = """You are a helpful assistant for Pegasus Communication Solutions.
-Answer based only on the provided context from the company's knowledge base.
-Be professional, clear, and friendly."""
+    # Generate answer using Grok
+    system_prompt = """You are a helpful, professional assistant for Pegasus Communication Solutions (PCS VoIP). 
+Answer the user's question using only the provided context from the company's knowledge base.
+Be clear, friendly, and accurate. If the information is not in the context, politely say so."""
 
     response = client.chat.completions.create(
         model="grok-beta",
