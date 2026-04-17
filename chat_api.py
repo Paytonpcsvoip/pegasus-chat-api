@@ -9,7 +9,7 @@ from openai import OpenAI
 
 app = FastAPI(title="Pegasus CS Assistant")
 
-# Enable CORS so your WordPress site can call it
+# CORS
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -18,18 +18,20 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Use OpenAI embeddings (works reliably on Render)
-embeddings = OpenAIEmbeddings(
-    model="text-embedding-3-small",
-    openai_api_key=os.environ.get("OPENAI_API_KEY")
-)
-
-vectorstore = Chroma(
-    persist_directory="./wp_semantic_index",
-    embedding_function=embeddings
-)
-
-retriever = vectorstore.as_retriever(search_kwargs={"k": 6})
+# Embeddings + Vector Store
+try:
+    embeddings = OpenAIEmbeddings(
+        model="text-embedding-3-small",
+        openai_api_key=os.environ.get("OPENAI_API_KEY")
+    )
+    vectorstore = Chroma(
+        persist_directory="./wp_semantic_index",
+        embedding_function=embeddings
+    )
+    retriever = vectorstore.as_retriever(search_kwargs={"k": 6})
+    print("✅ Vector store loaded successfully")
+except Exception as e:
+    print(f"❌ Failed to load vector store: {e}")
 
 # Grok Client
 client = OpenAI(
@@ -42,32 +44,40 @@ class ChatRequest(BaseModel):
 
 @app.post("/chat")
 async def chat(request: ChatRequest):
-    # Retrieve relevant content from your semantic index
-    docs = retriever.invoke(request.message)
-    context = "\n\n---\n\n".join([doc.page_content for doc in docs])
-    sources = [doc.metadata.get("source_url") for doc in docs if doc.metadata.get("source_url")]
+    try:
+        # Retrieve context
+        docs = retriever.invoke(request.message)
+        context = "\n\n---\n\n".join([doc.page_content for doc in docs])
+        sources = [doc.metadata.get("source_url") for doc in docs if doc.metadata.get("source_url")]
 
-    # Generate answer using Grok
-    system_prompt = """You are a helpful, professional assistant for Pegasus Communication Solutions (PCS VoIP). 
-Answer the user's question using only the provided context from the company's knowledge base.
-Be clear, friendly, and accurate. If the information is not in the context, politely say so."""
+        # Generate answer with Grok
+        system_prompt = """You are a helpful assistant for Pegasus Communication Solutions.
+Use only the provided context to answer the question accurately and professionally.
+If the answer is not in the context, say "I don't have that specific information in our current knowledge base.""""
 
-    response = client.chat.completions.create(
-        model="grok-beta",
-        messages=[
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": f"Context:\n{context}\n\nQuestion: {request.message}"}
-        ],
-        temperature=0.7,
-        max_tokens=800
-    )
+        response = client.chat.completions.create(
+            model="grok-beta",
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": f"Context:\n{context}\n\nQuestion: {request.message}"}
+            ],
+            temperature=0.7,
+            max_tokens=800
+        )
 
-    answer = response.choices[0].message.content
+        answer = response.choices[0].message.content
 
-    return {
-        "answer": answer,
-        "sources": sources[:5]
-    }
+        return {
+            "answer": answer,
+            "sources": sources[:5]
+        }
+
+    except Exception as e:
+        print(f"Error processing request: {e}")
+        return {
+            "answer": "Sorry, I'm having trouble processing your request right now. Please try again in a moment.",
+            "sources": []
+        }
 
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=int(os.environ.get("PORT", 8000)))
