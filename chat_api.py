@@ -9,6 +9,7 @@ from openai import OpenAI
 
 app = FastAPI(title="Pegasus CS Assistant")
 
+# Allow your WordPress site to connect
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -17,9 +18,9 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Grok Embeddings (learns your 80 pages)
+# Grok Embeddings
 embeddings = OpenAIEmbeddings(
-    model="text-embedding-3-small",
+    model="grok-embedding",                    # Grok's embedding model
     openai_api_key=os.environ.get("GROK_API_KEY"),
     openai_api_base="https://api.x.ai/v1"
 )
@@ -29,8 +30,9 @@ vectorstore = Chroma(
     embedding_function=embeddings
 )
 
-retriever = vectorstore.as_retriever(search_kwargs={"k": 7})  # Get 7 best matches
+retriever = vectorstore.as_retriever(search_kwargs={"k": 7})
 
+# Grok for generating answers
 client = OpenAI(
     base_url="https://api.x.ai/v1",
     api_key=os.environ.get("GROK_API_KEY")
@@ -46,10 +48,9 @@ async def chat(request: ChatRequest):
         context = "\n\n---\n\n".join([doc.page_content for doc in docs])
         sources = [doc.metadata.get("source_url") for doc in docs if doc.metadata.get("source_url")]
 
-        system_prompt = """You are a helpful assistant for Pegasus Communication Solutions.
-You help users with PCS VoIP, automation manager, mobile app, billing, users, etc.
-Answer using ONLY the provided context from the website. 
-Be professional, clear, and friendly. If you don't know, say so."""
+        system_prompt = """You are a helpful, professional assistant for Pegasus Communication Solutions.
+Answer using ONLY the provided context from our help website.
+Be clear, friendly, and accurate. If the answer is not in the context, say so."""
 
         response = client.chat.completions.create(
             model="grok-beta",
