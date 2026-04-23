@@ -9,7 +9,6 @@ from openai import OpenAI
 
 app = FastAPI(title="Pegasus CS Assistant")
 
-# CORS - allows your WordPress site to connect
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -18,7 +17,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Grok Embeddings
+# Grok Embeddings (learns your 80 pages)
 embeddings = OpenAIEmbeddings(
     model="text-embedding-3-small",
     openai_api_key=os.environ.get("GROK_API_KEY"),
@@ -30,9 +29,8 @@ vectorstore = Chroma(
     embedding_function=embeddings
 )
 
-retriever = vectorstore.as_retriever(search_kwargs={"k": 6})
+retriever = vectorstore.as_retriever(search_kwargs={"k": 7})  # Get 7 best matches
 
-# Grok for answers
 client = OpenAI(
     base_url="https://api.x.ai/v1",
     api_key=os.environ.get("GROK_API_KEY")
@@ -44,37 +42,36 @@ class ChatRequest(BaseModel):
 @app.post("/chat")
 async def chat(request: ChatRequest):
     try:
-        # Get relevant chunks from your semantic index
         docs = retriever.invoke(request.message)
         context = "\n\n---\n\n".join([doc.page_content for doc in docs])
         sources = [doc.metadata.get("source_url") for doc in docs if doc.metadata.get("source_url")]
 
-        # Generate answer with Grok
-        system_prompt = """You are a helpful, professional assistant for Pegasus Communication Solutions (PCS VoIP).
-Answer using only the provided context from the company's knowledge base.
-Be clear, friendly, and accurate."""
+        system_prompt = """You are a helpful assistant for Pegasus Communication Solutions.
+You help users with PCS VoIP, automation manager, mobile app, billing, users, etc.
+Answer using ONLY the provided context from the website. 
+Be professional, clear, and friendly. If you don't know, say so."""
 
         response = client.chat.completions.create(
             model="grok-beta",
             messages=[
                 {"role": "system", "content": system_prompt},
-                {"role": "user", "content": f"Context:\n{context}\n\nQuestion: {request.message}"}
+                {"role": "user", "content": f"Context from our help site:\n{context}\n\nUser Question: {request.message}"}
             ],
             temperature=0.7,
-            max_tokens=800
+            max_tokens=900
         )
 
         answer = response.choices[0].message.content
 
         return {
             "answer": answer,
-            "sources": sources[:5]
+            "sources": sources[:6]
         }
 
     except Exception as e:
         print(f"Error: {e}")
         return {
-            "answer": "Sorry, I'm having trouble right now. Please try again in a moment.",
+            "answer": "Sorry, I'm having trouble connecting right now. Please try again.",
             "sources": []
         }
 
