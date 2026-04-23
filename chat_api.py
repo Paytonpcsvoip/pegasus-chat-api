@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-from langchain_openai import OpenAIEmbeddings
+from langchain_voyageai import VoyageAIEmbeddings
 from langchain_chroma import Chroma
 import uvicorn
 import os
@@ -9,7 +9,6 @@ from openai import OpenAI
 
 app = FastAPI(title="Pegasus CS Assistant")
 
-# Allow your WordPress site to connect
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -18,11 +17,10 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Grok Embeddings
-embeddings = OpenAIEmbeddings(
-    model="grok-embedding",                    # Grok's embedding model
-    openai_api_key=os.environ.get("GROK_API_KEY"),
-    openai_api_base="https://api.x.ai/v1"
+# Voyage AI Embeddings (excellent quality + free tier)
+embeddings = VoyageAIEmbeddings(
+    model="voyage-3-large",                    # Best for help/technical content
+    voyage_api_key=os.environ.get("VOYAGE_API_KEY")
 )
 
 vectorstore = Chroma(
@@ -32,7 +30,7 @@ vectorstore = Chroma(
 
 retriever = vectorstore.as_retriever(search_kwargs={"k": 7})
 
-# Grok for generating answers
+# Grok for final answers
 client = OpenAI(
     base_url="https://api.x.ai/v1",
     api_key=os.environ.get("GROK_API_KEY")
@@ -49,14 +47,13 @@ async def chat(request: ChatRequest):
         sources = [doc.metadata.get("source_url") for doc in docs if doc.metadata.get("source_url")]
 
         system_prompt = """You are a helpful, professional assistant for Pegasus Communication Solutions.
-Answer using ONLY the provided context from our help website.
-Be clear, friendly, and accurate. If the answer is not in the context, say so."""
+Answer using only the provided context from our help website. Be clear, friendly, and accurate."""
 
         response = client.chat.completions.create(
             model="grok-beta",
             messages=[
                 {"role": "system", "content": system_prompt},
-                {"role": "user", "content": f"Context from our help site:\n{context}\n\nUser Question: {request.message}"}
+                {"role": "user", "content": f"Context:\n{context}\n\nQuestion: {request.message}"}
             ],
             temperature=0.7,
             max_tokens=900
@@ -72,7 +69,7 @@ Be clear, friendly, and accurate. If the answer is not in the context, say so.""
     except Exception as e:
         print(f"Error: {e}")
         return {
-            "answer": "Sorry, I'm having trouble connecting right now. Please try again.",
+            "answer": "Sorry, I'm having trouble right now. Please try again.",
             "sources": []
         }
 
