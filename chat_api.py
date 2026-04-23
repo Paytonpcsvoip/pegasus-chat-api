@@ -17,9 +17,9 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Voyage AI Embeddings (excellent quality + free tier)
+# Voyage AI Embeddings (using your free tokens)
 embeddings = VoyageAIEmbeddings(
-    model="voyage-3-large",                    # Best for help/technical content
+    model="voyage-3-large",
     voyage_api_key=os.environ.get("VOYAGE_API_KEY")
 )
 
@@ -47,10 +47,11 @@ async def chat(request: ChatRequest):
         sources = [doc.metadata.get("source_url") for doc in docs if doc.metadata.get("source_url")]
 
         system_prompt = """You are a helpful, professional assistant for Pegasus Communication Solutions.
-Answer using only the provided context from our help website. Be clear, friendly, and accurate."""
+Answer using only the provided context from our help website. 
+Be clear, friendly, and accurate. If you don't know, say so."""
 
         response = client.chat.completions.create(
-            model="grok-beta",
+            model="grok-4.20",           # Updated model name
             messages=[
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": f"Context:\n{context}\n\nQuestion: {request.message}"}
