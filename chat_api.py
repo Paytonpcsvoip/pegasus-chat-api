@@ -9,6 +9,7 @@ from openai import OpenAI
 
 app = FastAPI(title="Pegasus CS Assistant")
 
+# CORS - allows your WordPress site to connect
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -17,7 +18,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Grok embeddings + Grok answers (no local Ollama)
+# Grok Embeddings
 embeddings = OpenAIEmbeddings(
     model="text-embedding-3-small",
     openai_api_key=os.environ.get("GROK_API_KEY"),
@@ -31,6 +32,7 @@ vectorstore = Chroma(
 
 retriever = vectorstore.as_retriever(search_kwargs={"k": 6})
 
+# Grok for answers
 client = OpenAI(
     base_url="https://api.x.ai/v1",
     api_key=os.environ.get("GROK_API_KEY")
@@ -42,11 +44,15 @@ class ChatRequest(BaseModel):
 @app.post("/chat")
 async def chat(request: ChatRequest):
     try:
-   context = "You are answering general PCS VoIP questions without a knowledge base."
-sources = []
+        # Get relevant chunks from your semantic index
+        docs = retriever.invoke(request.message)
+        context = "\n\n---\n\n".join([doc.page_content for doc in docs])
+        sources = [doc.metadata.get("source_url") for doc in docs if doc.metadata.get("source_url")]
 
-        system_prompt = """You are a helpful assistant for Pegasus Communication Solutions.
-Answer using only the provided context. Be professional, clear, and friendly."""
+        # Generate answer with Grok
+        system_prompt = """You are a helpful, professional assistant for Pegasus Communication Solutions (PCS VoIP).
+Answer using only the provided context from the company's knowledge base.
+Be clear, friendly, and accurate."""
 
         response = client.chat.completions.create(
             model="grok-beta",
@@ -66,7 +72,7 @@ Answer using only the provided context. Be professional, clear, and friendly."""
         }
 
     except Exception as e:
-        print(f"Error: {str(e)}")
+        print(f"Error: {e}")
         return {
             "answer": "Sorry, I'm having trouble right now. Please try again in a moment.",
             "sources": []
