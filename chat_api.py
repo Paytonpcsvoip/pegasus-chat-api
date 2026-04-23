@@ -17,7 +17,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Voyage AI Embeddings (using your free tokens)
 embeddings = VoyageAIEmbeddings(
     model="voyage-3-large",
     voyage_api_key=os.environ.get("VOYAGE_API_KEY")
@@ -28,9 +27,8 @@ vectorstore = Chroma(
     embedding_function=embeddings
 )
 
-retriever = vectorstore.as_retriever(search_kwargs={"k": 7})
+retriever = vectorstore.as_retriever(search_kwargs={"k": 8})   # Increased
 
-# Grok for final answers
 client = OpenAI(
     base_url="https://api.x.ai/v1",
     api_key=os.environ.get("GROK_API_KEY")
@@ -46,18 +44,19 @@ async def chat(request: ChatRequest):
         context = "\n\n---\n\n".join([doc.page_content for doc in docs])
         sources = [doc.metadata.get("source_url") for doc in docs if doc.metadata.get("source_url")]
 
-        system_prompt = """You are a helpful, professional assistant for Pegasus Communication Solutions.
-Answer using only the provided context from our help website. 
-Be clear, friendly, and accurate. If you don't know, say so."""
+        system_prompt = """You are a helpful assistant for Pegasus Communication Solutions (PCS VoIP).
+You have access to the company's official help documentation.
+Answer the question using ONLY the provided context.
+If the context doesn't contain the answer, say "I don't have that information in our current help pages" and suggest what they might be looking for."""
 
         response = client.chat.completions.create(
-            model="grok-4.20",           # Updated model name
+            model="grok-4.20",
             messages=[
                 {"role": "system", "content": system_prompt},
-                {"role": "user", "content": f"Context:\n{context}\n\nQuestion: {request.message}"}
+                {"role": "user", "content": f"Context from our help site:\n{context}\n\nUser Question: {request.message}"}
             ],
-            temperature=0.7,
-            max_tokens=900
+            temperature=0.6,
+            max_tokens=1000
         )
 
         answer = response.choices[0].message.content
